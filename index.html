@@ -235,6 +235,19 @@ button{font-family:inherit}
 .wcard .txt{font-family:var(--serif);font-size:15px;line-height:1.9;color:#e4ecfd}
 .wcard .meta{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .wcard .meta .tag{color:var(--gold-2);white-space:nowrap}
+.wcard .replies{margin-top:2px;border-left:1px solid rgba(143,212,230,.18);padding-left:12px;display:flex;flex-direction:column;gap:6px}
+.wcard .reply-item{font-size:12px;color:var(--ink-2);line-height:1.65;display:flex;gap:8px;align-items:baseline;min-width:0}
+.wcard .reply-txt{flex:1;word-break:break-word}
+.wcard .reply-t{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.wcard .reply-more{font-size:11px;color:var(--muted);font-family:var(--mono);letter-spacing:.05em;margin-top:2px}
+.wcard .reply-toggle{margin-top:4px;align-self:flex-start;background:none;border:none;color:var(--frost);font-size:11.5px;font-family:var(--mono);letter-spacing:.12em;cursor:pointer;padding:0;transition:color .25s}
+.wcard .reply-toggle:hover{color:var(--gold-2)}
+.wcard .reply-box{margin-top:8px;display:flex;gap:8px;align-items:center}
+.wcard .reply-input{flex:1;min-width:0;background:rgba(255,255,255,.05);border:1px solid rgba(168,196,235,.25);color:var(--ink);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;outline:none;transition:border-color .25s}
+.wcard .reply-input:focus{border-color:var(--frost)}
+.wcard .reply-send{background:rgba(232,182,76,.14);border:1px solid rgba(232,182,76,.4);color:var(--gold-2);padding:8px 14px;border-radius:8px;font-size:12.5px;font-family:var(--mono);cursor:pointer;transition:background .25s}
+.wcard .reply-send:hover{background:rgba(232,182,76,.26)}
+.wcard .reply-send:disabled{opacity:.5;cursor:default}
 .wall-empty{text-align:center;color:var(--muted);padding:70px 0;font-size:15px}
 .wall-go{margin:38px auto 0;display:block;font-family:var(--serif);font-size:15px;letter-spacing:.1em;color:#2a1d04;background:linear-gradient(135deg,#f4d08a,#e0a93f);border:none;padding:13px 40px;border-radius:999px;cursor:pointer;box-shadow:0 8px 28px rgba(232,182,76,.3);transition:transform .25s var(--ease)}
 .wall-go:hover{transform:translateY(-2px)}
@@ -303,6 +316,7 @@ footer .copy{margin-top:18px;font-size:12px;color:var(--muted)}
   .wish-row{flex-direction:column}
   #wish-input{font-size:16px}
   .chip{min-height:44px;display:inline-flex;align-items:center}
+  .wcard .reply-input{font-size:16px}
   .tl{grid-template-columns:86px 34px 1fr}
   .tl::before{left:103px}
   .tl-item .t .name{font-size:16px}
@@ -830,7 +844,7 @@ document.querySelectorAll('.chip').forEach(function(ch){
 
 /* ================= 6. 云端同步 & 心愿墙 ================= */
 /* ---- 同步引擎：云端 / 本地双模式 ---- */
-var SYNC = { mode:'local', cfg:null, count:0, wishes:[], bad:0 };
+var SYNC = { mode:'local', cfg:null, count:0, wishes:[], bad:0, embedOk:null };
 var LOCAL_KEY = 'zq-wishes-local';
 var CFG_KEY = 'zq-sync-config';
 function normalizeSupabaseUrl(raw){
@@ -859,7 +873,7 @@ function saveCfg(url, anonKey){
 function clearCfg(){
   try{ localStorage.removeItem(CFG_KEY); }catch(e){}
 }
-function sb(method, qs, body, extra){
+function sb(method, qs, body, extra, table){
   var h = {
     'apikey': SYNC.cfg.anonKey,
     'Authorization': 'Bearer ' + SYNC.cfg.anonKey,
@@ -867,7 +881,7 @@ function sb(method, qs, body, extra){
   };
   if (extra){ for (var k in extra) h[k] = extra[k]; }
   else if (method === 'POST') h['Prefer'] = 'return=minimal';
-  return fetch(SYNC.cfg.url + '/rest/v1/wishes' + (qs || ''), {
+  return fetch(SYNC.cfg.url + '/rest/v1/' + (table || 'wishes') + (qs || ''), {
     method: method, headers: h,
     body: body ? JSON.stringify(body) : undefined
   }).then(function(r){
@@ -918,14 +932,90 @@ function renderWishes(){
   var list = SYNC.wishes.slice(0, 200);
   if (list.length === 0){ grid.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
+  var cloud = SYNC.mode === 'cloud';
   grid.innerHTML = list.map(function(w){
-    return '<div class="wcard"><div class="txt">' + esc(w.text) + '</div>' +
-      '<div class="meta"><span class="tag">月光心愿</span><span>' + relativeTime(w.t) + '</span></div></div>';
+    var rps = (w.replies || []).slice(0, 5);
+    var rpMore = (w.replies || []).length - rps.length;
+    var rpHTML = rps.map(function(r){
+      return '<div class="reply-item"><span class="reply-txt">' + esc(r.text) + '</span>' +
+        '<span class="reply-t">' + relativeTime(r.t) + '</span></div>';
+    }).join('');
+    if (rpMore > 0) rpHTML += '<div class="reply-more">还有 ' + rpMore + ' 条回复</div>';
+    return '<div class="wcard" data-wish="' + w.id + '">' +
+      '<div class="txt">' + esc(w.text) + '</div>' +
+      '<div class="meta"><span class="tag">月光心愿</span><span>' + relativeTime(w.t) + '</span></div>' +
+      (rpHTML ? '<div class="replies">' + rpHTML + '</div>' : '') +
+      (cloud
+        ? '<button type="button" class="reply-toggle">回复</button>' +
+          '<div class="reply-box" hidden><input class="reply-input" maxlength="60" placeholder="写一句回应…">' +
+          '<button type="button" class="reply-send">发送</button></div>'
+        : '') +
+      '</div>';
   }).join('');
 }
+function sendReply(card, wishId){
+  if (SYNC.mode !== 'cloud' || wishId == null || wishId === ''){
+    var inp0 = card.querySelector('.reply-input');
+    if (inp0){ inp0.value = ''; inp0.placeholder = '云端同步开启后可回复'; }
+    return;
+  }
+  var inp = card.querySelector('.reply-input');
+  var txt = (inp.value || '').trim();
+  if (!txt) return;
+  var wid = parseInt(wishId, 10);
+  if (!wid) return;
+  inp.disabled = true;
+  sb('POST', '', { wish_id: wid, text: txt }, null, 'replies').then(function(){
+    inp.value = '';
+    inp.disabled = false;
+    var box = card.querySelector('.reply-box');
+    if (box) box.hidden = true;
+    var tg = card.querySelector('.reply-toggle');
+    if (tg) tg.textContent = '回复';
+    poll();
+  }).catch(function(err){
+    inp.disabled = false;
+    inp.placeholder = (err && (err.status === 400 || err.status === 404))
+      ? '回复表未就绪，请先运行建表 SQL'
+      : '发送失败，请稍后再试';
+    setTimeout(function(){ inp.placeholder = '写一句回应…'; }, 4000);
+  });
+}
+(function(){
+  var wg = $('wall-grid');
+  if (!wg) return;
+  wg.addEventListener('click', function(e){
+    var t = e.target;
+    var card = t.closest ? t.closest('.wcard') : null;
+    if (!card) return;
+    if (t.classList && t.classList.contains('reply-toggle')){
+      var box = card.querySelector('.reply-box');
+      if (box){
+        var open = box.hidden;
+        box.hidden = !open;
+        t.textContent = open ? '回复' : '收起';
+        if (!open){ var inp = card.querySelector('.reply-input'); if (inp) inp.focus(); }
+      }
+      return;
+    }
+    if (t.classList && t.classList.contains('reply-send')){
+      sendReply(card, card.getAttribute('data-wish'));
+    }
+  });
+  wg.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('reply-input')){
+      e.preventDefault();
+      var card = e.target.closest ? e.target.closest('.wcard') : null;
+      if (card) sendReply(card, card.getAttribute('data-wish'));
+    }
+  });
+})();
 function poll(){
   if (SYNC.mode !== 'cloud' || !SYNC.cfg) return;
-  sb('GET', '?select=text,created_at&order=created_at.desc&limit=200', null, { 'Prefer': 'count=exact' }).then(function(res){
+  var qs = SYNC.embedOk === false
+    ? '?select=id,text,created_at&order=created_at.desc&limit=200'
+    : '?select=id,text,created_at,replies(id,text,created_at,order=created_at.asc)&order=created_at.desc&limit=200';
+  sb('GET', qs, null, { 'Prefer': 'count=exact' }).then(function(res){
     var list = res.body;
     var m = res.range.match(/\/\s*(\d+)\s*$/);
     var n = m ? parseInt(m[1], 10) : (list && list.length !== undefined ? list.length : 0);
@@ -935,13 +1025,22 @@ function poll(){
     updateCountUI();
     if (list && list.length !== undefined){
       SYNC.wishes = list.map(function(w){
-        return { id:'s' + (w.id || Math.random().toString(36).slice(2,8)),
+        return { id: w.id,
                  text:(w.text || '').slice(0,24),
-                 t:w.created_at ? new Date(w.created_at).getTime() : Date.now() };
+                 t:w.created_at ? new Date(w.created_at).getTime() : Date.now(),
+                 replies:(w.replies || []).map(function(r){
+                   return { id: r.id, text:(r.text || '').slice(0,80),
+                            t:r.created_at ? new Date(r.created_at).getTime() : Date.now() };
+                 }) };
       });
       renderWishes();
     }
-  }).catch(function(){
+  }).catch(function(err){
+    if (SYNC.embedOk !== false && err && (err.status === 400 || err.status === 404)){
+      SYNC.embedOk = false;
+      poll();
+      return;
+    }
     SYNC.bad++;
     if (SYNC.bad > 3){ setBadge('同步中断，正在重试…', 'off'); }
     else { setBadge('云端同步中', ''); }
