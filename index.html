@@ -927,15 +927,24 @@ function relativeTime(t){
   if (diff < 172800000) return '昨天';
   return Math.floor(diff/86400000) + ' 天前';
 }
+var WALL_SIG = null;
+function wallSig(list){
+  return list.map(function(w){
+    return w.id + ':' + w.text + '|' + (w.replies || []).map(function(r){
+      return r.id + ':' + r.text;
+    }).join(',');
+  }).join(';');
+}
 function renderWishes(){
   var grid = $('wall-grid'), empty = $('wall-empty');
   if (!grid) return;
-  var saved = {};
+  var saved = {}, focusId = null;
   Array.prototype.forEach.call(grid.querySelectorAll('.wcard'), function(c){
     var id = c.getAttribute('data-wish');
     var rp = c.querySelector('.replies');
     if (!rp) return;
     var inp = c.querySelector('.reply-input');
+    if (inp && document.activeElement === inp) focusId = id;
     saved[id] = { open: !rp.hidden, val: inp ? inp.value : '' };
   });
   var list = SYNC.wishes.slice(0, 200);
@@ -969,6 +978,15 @@ function renderWishes(){
         : '') +
       '</div>';
   }).join('');
+  WALL_SIG = wallSig(SYNC.wishes);
+  if (focusId){
+    var fc = grid.querySelector('.wcard[data-wish="' + focusId + '"]');
+    var fInp = fc ? fc.querySelector('.reply-input') : null;
+    if (fInp){
+      fInp.focus();
+      try{ fInp.setSelectionRange(fInp.value.length, fInp.value.length); }catch(e){}
+    }
+  }
 }
 function sendReply(card, wishId){
   if (SYNC.mode !== 'cloud' || wishId == null || wishId === ''){
@@ -1041,7 +1059,7 @@ function poll(){
     setBadge('云端同步中', '');
     updateCountUI();
     if (list && list.length !== undefined){
-      SYNC.wishes = list.map(function(w){
+      var mapped = list.map(function(w){
         return { id: w.id,
                  text:(w.text || '').slice(0,24),
                  t:w.created_at ? new Date(w.created_at).getTime() : Date.now(),
@@ -1052,7 +1070,9 @@ function poll(){
                             t:r.created_at ? new Date(r.created_at).getTime() : Date.now() };
                  }) };
       });
-      renderWishes();
+      var sig = wallSig(mapped);
+      SYNC.wishes = mapped;
+      if (sig !== WALL_SIG) renderWishes();
     }
   }).catch(function(err){
     if (SYNC.embedOk !== false && err && (err.status === 400 || err.status === 404)){
