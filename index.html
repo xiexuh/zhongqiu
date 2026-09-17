@@ -930,6 +930,14 @@ function relativeTime(t){
 function renderWishes(){
   var grid = $('wall-grid'), empty = $('wall-empty');
   if (!grid) return;
+  var saved = {};
+  Array.prototype.forEach.call(grid.querySelectorAll('.wcard'), function(c){
+    var id = c.getAttribute('data-wish');
+    var rp = c.querySelector('.replies');
+    if (!rp) return;
+    var inp = c.querySelector('.reply-input');
+    saved[id] = { open: !rp.hidden, val: inp ? inp.value : '' };
+  });
   var list = SYNC.wishes.slice(0, 200);
   if (list.length === 0){ grid.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
@@ -938,6 +946,9 @@ function renderWishes(){
     var rps = (w.replies || []).slice(0, 5);
     var rpMore = (w.replies || []).length - rps.length;
     var rpN = (w.replies || []).length;
+    var st = saved[w.id];
+    var rpOpen = st ? st.open : (rpN > 0);
+    var rpVal = st ? st.val : '';
     var rpHTML = rps.map(function(r){
       return '<div class="reply-item"><span class="reply-txt">' + esc(r.text) + '</span>' +
         '<span class="reply-t">' + relativeTime(r.t) + '</span></div>';
@@ -947,13 +958,14 @@ function renderWishes(){
       '<div class="txt">' + esc(w.text) + '</div>' +
       '<div class="meta"><span class="tag">月光心愿</span><span>' + relativeTime(w.t) + '</span></div>' +
       (cloud
-        ? '<div class="replies"' + (rpN > 0 ? '' : ' hidden') + '>' +
+        ? '<div class="replies"' + (rpOpen ? '' : ' hidden') + '>' +
             rpHTML +
-            '<div class="reply-box"><input class="reply-input" maxlength="60" placeholder="写一句回应…">' +
+            '<div class="reply-box"><input class="reply-input" maxlength="60" placeholder="写一句回应…"' +
+            (rpVal ? ' value="' + esc(rpVal) + '"' : '') + '>' +
             '<button type="button" class="reply-send">发送</button></div>' +
           '</div>' +
           '<button type="button" class="reply-toggle">' +
-            (rpN > 0 ? '收起' : '回复') + '</button>'
+            (rpOpen ? '收起' : (rpN > 0 ? '回复 · ' + rpN : '回复')) + '</button>'
         : '') +
       '</div>';
   }).join('');
